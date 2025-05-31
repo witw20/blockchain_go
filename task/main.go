@@ -43,27 +43,6 @@ func calculateHash(block Block) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
-func validateBlock(block Block, prevBlock Block) bool {
-	if block.blockID != prevBlock.blockID+1 {
-		return false
-	}
-
-	if block.previousHash != calculateHash(prevBlock) {
-		return false
-	}
-
-	return true
-}
-
-func validateAllBlocks(blocks Blockchain) bool {
-	for i := 1; i < len(blocks.blocks); i++ {
-		if !validateBlock(blocks.blocks[i], blocks.blocks[i-1]) {
-			return false
-		}
-	}
-	return true
-}
-
 func printBlockchain(blocks Blockchain) {
 	for i, block := range blocks.blocks {
 		if i == 0 {
