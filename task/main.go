@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"math/rand"
@@ -30,8 +31,16 @@ type BlockChain struct {
 	zeroString string
 }
 
+type MiningResult struct {
+	magicNumber int32
+	hash        string
+	miner       int
+}
+
 func main() {
+	// initialization
 	blockChain := createBlockChain(blockchainSize, "")
+
 	for i := 0; i < blockchainSize; i++ {
 		if i == 0 {
 			blockChain.blocks[i] = *createBlock(i+1, time.Now().UnixNano(),
@@ -72,20 +81,48 @@ func (blockChain *BlockChain) adjustZero(duration time.Duration) int {
 	return flag
 }
 
-func (block *Block) calculateHash() string {
-	blockData := fmt.Sprintf("%d%d%d%s", block.blockID, block.timestamp, block.magicNumber, block.previousHash)
+func (block *Block) calculateHashWithMagic(magic int32) string {
+	blockData := fmt.Sprintf("%d%d%d%s", block.blockID, block.timestamp, magic, block.previousHash)
 	hash := sha256.New()
 	hash.Write([]byte(blockData))
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
+func (block *Block) calculateHash() string {
+	return block.calculateHashWithMagic(block.magicNumber)
+}
+
 func (block *Block) calculateMagicNumber(zeroString string) {
-	hushString := block.calculateHash()
-	for !strings.HasPrefix(hushString, zeroString) || block.magicNumber == -1 {
-		block.magicNumber = rand.Int31()
-		hushString = block.calculateHash()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultCh := make(chan MiningResult, 1)
+
+	for i := 0; i < minerNum; i++ {
+		go block.mining(ctx, i, zeroString, resultCh)
 	}
-	block.thisHash = hushString
+	result := <-resultCh
+	cancel()
+
+	block.magicNumber = result.magicNumber
+	block.thisHash = result.hash
+	block.creator = fmt.Sprintf("miner%d", result.miner)
+}
+
+func (block *Block) mining(ctx context.Context, miner int, zeroString string, resultCh chan<- MiningResult) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		hushString := block.thisHash
+		magic := block.magicNumber
+		for !strings.HasPrefix(hushString, zeroString) || magic == -1 {
+			magic = rand.Int31()
+			hushString = block.calculateHashWithMagic(magic)
+		}
+		resultCh <- MiningResult{magic, hushString, miner}
+	}
 }
 
 func (block *Block) printBlock() {
