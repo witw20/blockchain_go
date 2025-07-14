@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"math/rand"
+	"os"
 	"strings"
 	"time"
 )
@@ -23,6 +25,7 @@ type Block struct {
 	magicNumber  int32
 	previousHash string
 	thisHash     string
+	message      string
 	duration     time.Duration
 }
 
@@ -58,10 +61,23 @@ func main() {
 func createBlock(blockID int, timestamp int64, zeroString string, prevBlockHash string) *Block {
 	start := time.Now()
 	block := &Block{blockID, "miner", timestamp, -1,
-		prevBlockHash, "", time.Duration(0)}
+		prevBlockHash, "", "No messages", time.Duration(0)}
+	if block.blockID != 1 {
+		block.updateMessage()
+	}
 	block.calculateMagicNumber(zeroString)
 	block.duration = time.Since(start)
 	return block
+}
+
+func (block *Block) updateMessage() {
+	fmt.Println("\nEnter a single message to send to the Blockchain:")
+	reader := bufio.NewReader(os.Stdin)
+	message, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Println("Error when scanning message input: ", err)
+	}
+	block.message = strings.TrimSuffix(message, "\n")
 }
 
 func createBlockChain(length int, zeroString string) *BlockChain {
@@ -138,6 +154,7 @@ func (block *Block) printBlock() {
 	fmt.Printf("Magic number: %d\n", block.magicNumber)
 	fmt.Printf("Hash of the previous block:\n%s\n", block.previousHash)
 	fmt.Printf("Hash of the block:\n%s\n", block.thisHash)
+	fmt.Printf("Block data:\n%s\n", block.message)
 	fmt.Printf("Block was generating for %.0f seconds\n", block.duration.Seconds())
 }
 
