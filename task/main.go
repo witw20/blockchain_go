@@ -3,8 +3,14 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	cryptoRand "crypto/rand" // Import "crypto/rand" with the `cryptoRand` prefix
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -26,6 +32,9 @@ type Block struct {
 	previousHash string
 	thisHash     string
 	message      string
+	messageID    string
+	publicKey    string
+	signature    string
 	duration     time.Duration
 }
 
@@ -58,16 +67,66 @@ func main() {
 	}
 }
 
+func generatePrivateKey() *ecdsa.PrivateKey {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), cryptoRand.Reader)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return privateKey
+}
+
+func getPublicKey(privateKey *ecdsa.PrivateKey) string {
+	publicKey, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(publicKey)
+}
+
+func signMessage(msg string, privateKey *ecdsa.PrivateKey) string {
+	sha256Hash := sha256.New()
+	sha256Hash.Write([]byte(msg))
+	hash := sha256Hash.Sum(nil)
+
+	bytes, err := ecdsa.SignASN1(cryptoRand.Reader, privateKey, hash[:])
+	if err != nil {
+		log.Fatal(err)
+	}
+	return base64.StdEncoding.EncodeToString(bytes)
+}
+
 func createBlock(blockID int, timestamp int64, zeroString string, prevBlockHash string) *Block {
 	start := time.Now()
 	block := &Block{blockID, "miner", timestamp, -1,
-		prevBlockHash, "", "No messages", time.Duration(0)}
+		prevBlockHash, "", "No messages", "",
+		"", "", time.Duration(0)}
 	if block.blockID != 1 {
 		block.updateMessage()
+		block.encryptMessage()
 	}
 	block.calculateMagicNumber(zeroString)
 	block.duration = time.Since(start)
 	return block
+}
+
+func (block *Block) encryptMessage() {
+	privateKey := generatePrivateKey()
+	block.publicKey = getPublicKey(privateKey)
+	block.signature = signMessage(block.message, privateKey)
+	block.generateMessageID()
+}
+
+func (block *Block) generateMessageID() {
+	binaryData := []byte(fmt.Sprintf("%s%s%s",
+		block.message, block.publicKey, block.signature))
+
+	sha256Hash1 := sha256.New()
+	sha256Hash1.Write(binaryData)
+
+	sha256Hash2 := sha256.New()
+	sha256Hash2.Write(sha256Hash1.Sum(nil))
+
+	block.messageID = fmt.Sprintf("%x", sha256Hash2.Sum(nil))
 }
 
 func (block *Block) updateMessage() {
@@ -155,6 +214,11 @@ func (block *Block) printBlock() {
 	fmt.Printf("Hash of the previous block:\n%s\n", block.previousHash)
 	fmt.Printf("Hash of the block:\n%s\n", block.thisHash)
 	fmt.Printf("Block data:\n%s\n", block.message)
+	if block.blockID != 1 {
+		fmt.Printf("Message ID: %s\n", block.messageID)
+		fmt.Printf("Public Key: %s\n", block.publicKey)
+		fmt.Printf("Signature: %s\n", block.signature)
+	}
 	fmt.Printf("Block was generating for %.0f seconds\n", block.duration.Seconds())
 }
 
